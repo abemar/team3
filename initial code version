@@ -1,0 +1,342 @@
+#include <NewPing.h>
+#include <HUBeeBMDWheel.h>
+
+HUBeeBMDWheel leftWheel;
+HUBeeBMDWheel rightWheel;
+int newPos=0; //Reset the new position of the robot to 0
+int sensorvalue;
+int newstate;
+int elapsedstate;
+
+#define TRIGGER_PIN  A2 
+#define ECHO_PIN     A1 
+#define MAX_DISTANCE 200
+NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
+
+unsigned int CollisionCounter;
+
+unsigned int duration;
+int threshold=40;
+unsigned int distance;
+unsigned int FrontDistance;
+unsigned int LeftDistance;
+unsigned int RightDistance;
+unsigned int Time;
+static unsigned long lastMillis = 0;
+static unsigned long timer1 = 0;
+static unsigned long timer2;
+#define timerInterval 88000
+int leftSpeed = 300, rightSpeed = -300;
+
+int leftQeiAPin  = 3; //external interrupt 0
+int leftQeiBPin  = 7;
+int rightQeiAPin = 2; //external interrupt 1
+int rightQeiBPin = 4;
+
+int leftQeiCounts = 0, rightQeiCounts = 0;
+int leftElapsedTime = 0, rightElapsedTime = 0;
+int leftOldElapsedTime = 0, rightOldElapsedTime = 0;
+int serialTimer = 0;
+
+void robodistance(int distanceToTravel){
+
+  rightQeiCounts=0;
+  leftQeiCounts=0;
+  int goal=(188.94/64)*distanceToTravel;
+  int leftSpeedB = -300, rightSpeedB = 300;
+  while(leftQeiCounts <goal, rightQeiCounts <goal){
+    leftQeiCounts++;
+    rightQeiCounts++;
+    leftWheel.setMotorPower(-leftSpeed);
+    rightWheel.setMotorPower(-rightSpeed);
+    Serial.print(leftQeiCounts);
+    Serial.print("  ");
+    Serial.print(rightQeiCounts);
+    Serial.print("  ");
+    Serial.println(goal);  
+
+    scan();
+    checkdistance();
+
+  }
+  leftWheel.setMotorPower(0);
+  rightWheel.setMotorPower(0);
+  //if (leftQeiCounts=goal, rightQeiCounts=goal) goal=newPos;
+
+}
+
+/*void robodistanceback(int distanceToTravelB){
+ leftQeiCounts=0;
+ rightQeiCounts=0;
+ int leftSpeedB = -150, rightSpeedB = 150;
+ int goalB=(188.94/64)*distanceToTravelB;
+ 
+ while(leftQeiCounts <goalB,rightQeiCounts <goalB){
+ leftQeiCounts++;
+ rightQeiCounts++;
+ leftWheel.setMotorPower(leftSpeedB);
+ rightWheel.setMotorPower(rightSpeedB);
+ Serial.print(leftQeiCounts);
+ Serial.print("  ");
+ Serial.print(rightQeiCounts);
+ Serial.print("  ");
+ Serial.println(goalB);  
+ }
+ leftWheel.setMotorPower(0);
+ rightWheel.setMotorPower(0);
+ if (leftQeiCounts=goalB, rightQeiCounts=goalB) goalB=newPos;
+ Serial.println(goalB);
+ Serial.print(" ");
+ }
+ 
+/*void robodistanceturnL(int distanceToTravelL){
+ leftQeiCounts=0;
+ rightQeiCounts=0;
+ int leftSpeedL = 150, rightSpeedL = -150;
+ 
+ int goalL=(((188.94/64)*distanceToTravelL)/4);
+ 
+ while(leftQeiCounts <goalL, rightQeiCounts <goalL){
+ leftQeiCounts++;
+ rightQeiCounts++;
+ leftWheel.setMotorPower(leftSpeedL);
+ rightWheel.setMotorPower(-rightSpeedL);
+ Serial.print(leftQeiCounts);
+ Serial.print("  ");
+ Serial.print(rightQeiCounts);
+ Serial.print("  ");
+ Serial.println(goalL); 
+ 
+ //scan();
+ //checkdistance(); 
+ }
+ leftWheel.setMotorPower(0);
+ rightWheel.setMotorPower(0);
+ if (leftQeiCounts=goalL, rightQeiCounts=goalL) goalL=newPos;
+ 
+ }*/
+
+
+
+
+
+void setup()
+{
+  pinMode(leftQeiAPin, INPUT);
+  pinMode(rightQeiAPin, INPUT);
+  pinMode(leftQeiBPin, INPUT);
+  pinMode(rightQeiBPin, INPUT);
+  leftWheel.setupPins(8,11,9); //setup using pins 12 and 2 for direction control, and 3 for PWM speed control
+  rightWheel.setupPins(12,13,10);//setup using pins 13 and 4 for direction control, and 11 for PWM speed control
+  leftWheel.setDirectionMode(1); //Set the direction mode to 1
+  rightWheel.setDirectionMode(1); //set the direction mode to 1
+  /*
+  The counter for each wheel (leftQeiCounts and rightQeiCounts) will go up when the motor direction is set to 1 and motor power is positive
+   It will go down when motor power is negative
+   The leftElapsedTime and rightElapsedTime will give you an indication of speed - The bigger the number the lower the speed
+   BE WARNED - The speed variables will give innacurate readings at low speed because the values get too big
+   */
+
+
+  attachInterrupt(0, QEI_LeftWheel, CHANGE);
+  attachInterrupt(1, QEI_RightWheel, CHANGE);
+  Serial.begin(9600);
+  //start the wheels
+  leftWheel.setMotorPower(leftSpeed); //full speed ahead
+  rightWheel.setMotorPower(rightSpeed); //full speed ahead
+}
+
+
+
+int scan()                                         //This function determines the distance things are away from the ultrasonic sensor
+{
+
+  Serial.println("");
+  Serial.println("Scanning");
+  Time = sonar.ping(); 
+  distance = Time / US_ROUNDTRIP_CM;
+  delay(250);
+  return(distance);
+}
+
+void brake()
+{
+  leftWheel.setMotorPower(0);
+  rightWheel.setMotorPower(0);
+}
+
+void checkdistance(){
+  /*
+  FrontDistance = distance;                           //Set the variable FrontDistance to the value of the distance returned from the scan function
+  Serial.println("Front distance = ");
+  Serial.print(distance);
+ if(FrontDistance < threshold)        //If there is nothing infront of the robot within 40cm or the distance value is 0 (which for the newping libary means no ping was returned) then...
+  {
+     Serial.println("STOPPED"); 
+     leftWheel.stopMotor();
+     rightWheel.stopMotor();
+  // brake();                                     //Go to the moveForward function
+  } 
+  else                                                //Else (if there is something infront of the robot within 40cm) then...
+  {
+
+   // robodistance(100);
+  }
+  */
+ 
+ 
+  int leftSpeedB = -300, rightSpeedB = 300;
+  while (scan() < threshold) {
+     checktime();
+     Serial.println("STOPPED"); 
+     leftWheel.stopMotor();
+     rightWheel.stopMotor();
+  // brake();                                     //Go to the moveForward function
+  } 
+ leftWheel.setMotorPower(-leftSpeed);
+ rightWheel.setMotorPower(-rightSpeed);
+ 
+  
+  
+}
+
+
+void checktime(){
+
+  timer2=millis();
+  lastMillis=(timer2-timer1);
+  if (lastMillis<timerInterval){
+    if(serialTimer > 1000)
+    {
+      Serial.println(timer2);
+      Serial.print("Left C= ");
+      Serial.print(leftQeiCounts);
+      Serial.print(" T= ");
+      Serial.print(leftElapsedTime);
+      Serial.print(" Right C= ");
+      Serial.print(rightQeiCounts);
+      Serial.print(" T= ");
+      Serial.println(rightElapsedTime);
+      serialTimer = 0;
+    }
+    delay(1);
+    serialTimer++;
+  }
+  if (lastMillis>=timerInterval)leftWheel.setMotorPower(leftSpeed=0); 
+  if (lastMillis>=timerInterval)rightWheel.setMotorPower(rightSpeed=0); 
+}
+
+
+void loop(){
+
+  checktime();
+  robodistance(1000);
+
+
+  //robodistanceturnL(78);
+  //delay(100);
+  // robodistance(60);
+
+  //Go to the scan function
+
+
+
+
+
+  //do this forever - spin the wheels and reverse direction when the count gets to + or - 64
+  // There are 64 'ticks' per revolution
+  if(leftQeiCounts < -64) leftWheel.setMotorPower(leftSpeed);
+  if(rightQeiCounts < -64) rightWheel.setMotorPower(rightSpeed);
+  if(leftQeiCounts > 64) leftWheel.setMotorPower(-leftSpeed);
+  if(rightQeiCounts > 64) rightWheel.setMotorPower(-rightSpeed);
+
+}
+
+
+
+//serialTimer counts up, when it gets to 100 print some data and reset the timer
+
+
+
+//Left Wheel pin interrupt function
+//Uses one interrupt for chanel A and a normal pin for Chanel B
+//This will give 64 counts per revolution
+void QEI_LeftWheel()
+{
+  //work out the elapsed time since the last interrupt
+  leftElapsedTime = micros()-leftOldElapsedTime;
+  leftOldElapsedTime = micros();
+  //ChA has changed state
+  //Check the state of ChA
+  if(digitalRead(leftQeiAPin))
+  {
+    //pin has gone high
+    //check chanel B
+    if(digitalRead(leftQeiBPin))
+    {
+      //both are high
+      leftQeiCounts++;
+      return;
+    }
+    //ChB is low
+    leftQeiCounts--;
+    return;
+  }
+  //if you get here then ChA has gone low, check ChB
+  if(digitalRead(leftQeiBPin))
+  {
+    //ChB is high
+    leftQeiCounts--;
+    return;
+  }
+  //if you get here then A has gone low and B is low
+  leftQeiCounts++;
+}
+
+//Left Wheel pin interrupt function
+void QEI_RightWheel()
+{
+  //work out the elapsed time since the last interrupt
+  rightElapsedTime = micros()-rightOldElapsedTime;
+  rightOldElapsedTime = micros();
+  //ChA has changed state
+  //Check the state of ChA
+  if(digitalRead(rightQeiAPin))
+  {
+    //pin has gone high
+    //check chanel B
+    if(digitalRead(rightQeiBPin))
+    {
+      //both are high
+      rightQeiCounts++;
+      return;
+    }
+    //ChB is low
+    rightQeiCounts--;
+    return;
+  }
+  //if you get here then ChA has gone low, check ChB
+  if(digitalRead(rightQeiBPin))
+  {
+    //ChB is high
+    rightQeiCounts--;
+    return;
+  }
+  //if you get here then A has gone low and B is low
+  rightQeiCounts++;
+}
+/*void navigate (){
+ Serial.println("There's an obstacle!");
+ scan();
+ Serial.println("Front distance = ");
+ Serial.print(distance);
+ if(FrontDistance < threshold)
+ {
+ brake();
+ 
+ }
+ }*/
+
+
+
+
